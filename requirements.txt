@@ -1,5 +1,5 @@
-   pandas
-   numpy
-   scipy
-   matplotlib
-   pyarrow
+pandas
+numpy
+scipy
+matplotlib
+pyarrow
