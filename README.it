@@ -1,0 +1,80 @@
+# Shrinkage bayesiano per le valutazioni dei prodotti
+
+**Quanto è buono un prodotto con sole 3 recensioni?** Questo progetto stima la vera quota di clienti soddisfatti di ogni prodotto Amazon, anche quando le recensioni sono pochissime, con un modello bayesiano empirico Beta-Binomiale. Le stime sono verificate sulle recensioni scritte *dopo* il periodo di addestramento.
+
+## Risultato principale
+
+Su 179.784 recensioni future di 16.024 prodotti, la stima bayesiana è la più accurata tra i metodi confrontati:
+
+| Metodo | Log-loss | Brier score |
+|---|---|---|
+| **Shrinkage bayesiano** | **0,596** | **0,203** |
+| Correzione di Laplace (k+1)/(n+2) | 0,604 | 0,206 |
+| Media globale | 0,621 | 0,214 |
+| Percentuale grezza k/n | 1,040 | 0,234 |
+
+Rispetto alla percentuale grezza riduce il Brier score del **13%**, rispetto alla media globale del **6%**, ed è il metodo migliore in ogni fascia di prodotti.
+
+## Il problema
+
+Nella categoria *All Beauty* il prodotto mediano ha **2 recensioni** e il 42% dei prodotti ne ha una sola. Ordinando per percentuale grezza, **37.873 prodotti risultano primi a pari merito con il 100%**, e l'89% di questi ha 3 recensioni o meno. Un prodotto con 706 recensioni positive su 726 (97,2%) è **37.907°** per percentuale grezza e **8°** con la stima bayesiana.
+
+## Dati
+
+[Amazon Reviews 2023](https://amazon-reviews-2023.github.io/) (McAuley Lab, UC San Diego), categoria *All_Beauty*: 701.528 recensioni, dal 2000 al 2023.
+
+Pulizia:
+- rimosse 7.300 copie identiche e 299 recensioni ripetute dalla stessa persona sullo stesso prodotto;
+- tenuti solo gli **acquisti verificati** (il 90,5% delle recensioni; quelle non verificate erano più generose di 5 punti);
+- risultato: 628.189 recensioni.
+
+Una recensione è **positiva** se ha 4 o 5 stelle (le 3 stelle contano come non positive).
+
+## Metodo
+
+Ogni prodotto *i* ha una vera quota di recensioni positive *p<sub>i</sub>*, sconosciuta. Due ipotesi:
+
+- la qualità dei prodotti nel catalogo segue una distribuzione **Beta(α, β)** (il prior);
+- dato *p<sub>i</sub>*, il numero di recensioni positive *k<sub>i</sub>* su *n<sub>i</sub>* segue una **Binomiale(n<sub>i</sub>, p<sub>i</sub>)**.
+
+α e β sono stimati per **massima verosimiglianza** sulla distribuzione marginale Beta-Binomiale, usando tutti i prodotti recensiti prima del 2021 (ottimizzatore L-BFGS-B):
+
+> α = 4,50, β = 1,77, cioè media a priori μ = 0,72 e forza del prior α+β ≈ 6,3 recensioni "fittizie".
+
+La stima per ogni prodotto è la media a posteriori:
+
+$$\hat p_i = \frac{k_i + \alpha}{n_i + \alpha + \beta}$$
+
+I prodotti con poche recensioni vengono avvicinati al 72%; quelli con molte recensioni mantengono la propria percentuale.
+
+## Valutazione
+
+- **Divisione temporale:** recensioni prima del 1° gennaio 2021 per la stima (448.405), recensioni dal 2021 in poi per la verifica (179.784). Insieme di test: 16.024 prodotti presenti in entrambi i periodi.
+- **Metriche:** log-loss e Brier score su ogni recensione futura (per la log-loss le percentuali grezze sono limitate all'intervallo [0,001; 0,999]).
+
+Log-loss per numero di recensioni passate:
+
+| Recensioni passate | Prodotti | Grezza | Media globale | Laplace | **Bayes** |
+|---|---|---|---|---|---|
+| 1 | 4.245 | 2,606 | 0,634 | 0,667 | **0,629** |
+| 2–5 | 5.844 | 1,354 | 0,628 | 0,628 | **0,614** |
+| 6–20 | 3.981 | 0,836 | 0,628 | 0,614 | **0,610** |
+| oltre 20 | 1.954 | 0,579 | 0,609 | 0,569 | **0,568** |
+
+Con una sola recensione la correzione di Laplace fa peggio della media globale, perché avvicina le stime al 50%. Imparare il prior dai dati risolve il problema.
+
+![Shrinkage](figures/shrinkage.png)
+![Errore per fascia](figures/errore_per_fascia.png)
+
+## Limiti
+
+- Il miglioramento rispetto alla media globale è contenuto (circa 4% di log-loss): le singole recensioni sono molto rumorose.
+- **Drift:** le recensioni positive scendono dal 73,0% prima del 2021 al 65,4% dopo, quindi tutti i metodi prevedono troppe recensioni positive.
+- Un unico prior per tutti i prodotti; aggiungere caratteristiche del prodotto (marca, prezzo) sarebbe un'estensione naturale.
+
+## Come riprodurre
+
+1. Apri `bayesian_product_rating.ipynb` in Google Colab.
+2. Esegui tutte le celle: il notebook scarica i dati, li pulisce, stima il modello e produce i grafici.
+
+Librerie necessarie: `pandas`, `numpy`, `scipy`, `matplotlib`, `pyarrow`.
